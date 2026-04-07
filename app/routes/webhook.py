@@ -53,18 +53,21 @@ async def webflow_order(request: Request):
 
     logger.info("Webhook received — signature valid")
 
-    payload = await request.json()
-    logger.info("Parsed JSON payload keys: %s", list(payload.keys()))
-    logger.info("Full payload: %s", payload)
+    body = await request.json()
+    logger.info("Parsed JSON keys: %s", list(body.keys()))
 
-    if not payload.get("customer_email"):
-        logger.warning("Missing customer_email in payload: %s", payload)
+    # Webflow wraps form data inside payload.data
+    form_data = body.get("payload", {}).get("data", {})
+    logger.info("Form data: %s", form_data)
+
+    if not form_data.get("customer_email"):
+        logger.warning("Missing customer_email in form data: %s", form_data)
         raise HTTPException(status_code=400, detail="customer_email is required")
 
     try:
-        order = WebflowOrderPayload(**payload)
+        order = WebflowOrderPayload(**form_data)
     except ValidationError as exc:
-        logger.warning("Pydantic validation failed: %s | payload: %s", exc, payload)
+        logger.warning("Pydantic validation failed: %s | form_data: %s", exc, form_data)
         raise HTTPException(status_code=400, detail="invalid payload")
 
     logger.info(
