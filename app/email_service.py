@@ -169,12 +169,15 @@ def send_order_confirmation(order: WebflowOrderPayload) -> None:
     )
 
     if config.SHOP_EMAIL:
-        _send_email(
-            subject=f"Новый заказ от {order.customer_name or order.customer_email}",
-            from_addr=config.MAIL_FROM,
-            to_addr=config.SHOP_EMAIL,
-            plain=_build_shop_plain(order),
-            html=_build_shop_html(order),
-        )
+        try:
+            _send_email(
+                subject=f"Новый заказ от {order.customer_name or order.customer_email}",
+                from_addr=config.MAIL_FROM,
+                to_addr=config.SHOP_EMAIL,
+                plain=_build_shop_plain(order),
+                html=_build_shop_html(order),
+            )
+        except Exception as exc:
+            logger.error("Shop notification failed (non-fatal): %s", exc)
     else:
         logger.warning("SHOP_EMAIL not set — skipping shop notification")
