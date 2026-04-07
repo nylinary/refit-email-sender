@@ -36,9 +36,14 @@ def health():
 
 @router.post("/webhooks/webflow-order")
 async def webflow_order(request: Request):
+    logger.info("Incoming request headers: %s", dict(request.headers))
+
     timestamp = request.headers.get("x-webflow-timestamp", "")
     signature = request.headers.get("x-webflow-signature", "")
     raw_body = await request.body()
+
+    logger.info("Raw body (%d bytes): %s", len(raw_body), raw_body[:2000])
+    logger.info("x-webflow-timestamp=%s x-webflow-signature=%s", timestamp, signature)
 
     try:
         _verify_webflow_signature(WEBFLOW_WEBHOOK_SECRET, timestamp, raw_body, signature)
@@ -49,14 +54,17 @@ async def webflow_order(request: Request):
     logger.info("Webhook received — signature valid")
 
     payload = await request.json()
+    logger.info("Parsed JSON payload keys: %s", list(payload.keys()))
+    logger.info("Full payload: %s", payload)
 
     if not payload.get("customer_email"):
+        logger.warning("Missing customer_email in payload: %s", payload)
         raise HTTPException(status_code=400, detail="customer_email is required")
 
     try:
         order = WebflowOrderPayload(**payload)
     except ValidationError as exc:
-        logger.warning("Invalid payload: %s", exc)
+        logger.warning("Pydantic validation failed: %s | payload: %s", exc, payload)
         raise HTTPException(status_code=400, detail="invalid payload")
 
     logger.info(
