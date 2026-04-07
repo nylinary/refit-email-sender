@@ -20,3 +20,5 @@ MAIL_FROM: str = _get("MAIL_FROM")
 SHOP_NAME: str = _get("SHOP_NAME", "Магазин")
 SHOP_PHONE: str = _get("SHOP_PHONE")
 SHOP_EMAIL: str = _get("SHOP_EMAIL")
+
+WEBHOOK_SECRET: str = _get("WEBHOOK_SECRET")

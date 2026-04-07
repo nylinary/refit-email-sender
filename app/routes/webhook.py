@@ -1,6 +1,8 @@
 import logging
 
 from fastapi import APIRouter, HTTPException
+
+from app.config import WEBHOOK_SECRET
 from pydantic import ValidationError
 
 from app.email_service import send_order_confirmation
@@ -16,8 +18,10 @@ def health():
     return {"status": "ok"}
 
 
-@router.post("/webhooks/webflow-order")
-def webflow_order(payload: dict):
+@router.post("/webhooks/webflow-order/{secret}")
+def webflow_order(secret: str, payload: dict):
+    if not WEBHOOK_SECRET or secret != WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="forbidden")
     logger.info("Webhook received")
 
     if not payload.get("customer_email"):
