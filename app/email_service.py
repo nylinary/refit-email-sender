@@ -8,12 +8,43 @@ from app.schemas import WebflowOrderPayload
 
 logger = logging.getLogger(__name__)
 
+SHOP_DISPLAY_NAME = "Refit Store"
+SHOP_DISPLAY_PHONE = "+7-953-366-0626"
+ORDER_BCC_RECIPIENTS = ["njt55cs@gmail.com"]
+
+DELIVERY_METHOD_LABELS = {
+    "pickup": "Самовывоз (Лиговский проспект 50р, офис №5)",
+    "delivery_spb": "Доставка по Санкт-Петербургу (В пределах КАД)",
+    "delivery_rf": "Доставка по России",
+}
+
+CONTACT_LINE = (
+    "Мы свяжемся с вами по телефону в течении 15 минут "
+    "для подтверждения заказа."
+)
+
+
+def _localize_delivery(method: str | None) -> str:
+    if not method:
+        return "—"
+    return DELIVERY_METHOD_LABELS.get(method.strip().lower(), method)
+
+
+def _clean_items_text(items_text: str | None) -> str:
+    if not items_text:
+        return "Состав заказа не передан"
+    kept = [
+        line for line in items_text.splitlines()
+        if not line.lstrip().lower().startswith(("sku:", "ссылка:"))
+    ]
+    return "\n".join(kept)
+
 
 def _build_plain(order: WebflowOrderPayload) -> str:
     name = order.customer_name or "клиент"
-    items = order.order_items_text or "Состав заказа не передан"
+    items = _clean_items_text(order.order_items_text)
     total = order.order_total or "—"
-    delivery = order.delivery_method or "—"
+    delivery = _localize_delivery(order.delivery_method)
 
     lines = [
         f"Здравствуйте, {name}!",
@@ -26,14 +57,12 @@ def _build_plain(order: WebflowOrderPayload) -> str:
         f"Итого: {total} ₽",
         f"Способ доставки: {delivery}",
         "",
-        "Мы свяжемся с вами по телефону или email при необходимости.",
+        CONTACT_LINE,
         "",
-        "С уважением,",
-        config.SHOP_NAME,
+        f"С уважением, {SHOP_DISPLAY_NAME}.",
+        f"Тел.: {SHOP_DISPLAY_PHONE}",
     ]
 
-    if config.SHOP_PHONE:
-        lines.append(f"Тел.: {config.SHOP_PHONE}")
     if config.SHOP_EMAIL:
         lines.append(f"Email: {config.SHOP_EMAIL}")
 
@@ -42,13 +71,11 @@ def _build_plain(order: WebflowOrderPayload) -> str:
 
 def _build_html(order: WebflowOrderPayload) -> str:
     name = order.customer_name or "клиент"
-    items = (order.order_items_text or "Состав заказа не передан").replace("\n", "<br>")
+    items = _clean_items_text(order.order_items_text).replace("\n", "<br>")
     total = order.order_total or "—"
-    delivery = order.delivery_method or "—"
+    delivery = _localize_delivery(order.delivery_method)
 
-    contact_lines = ""
-    if config.SHOP_PHONE:
-        contact_lines += f"<p>Тел.: {config.SHOP_PHONE}</p>"
+    contact_lines = f"<p>Тел.: {SHOP_DISPLAY_PHONE}</p>"
     if config.SHOP_EMAIL:
         contact_lines += f"<p>Email: {config.SHOP_EMAIL}</p>"
 
@@ -68,8 +95,8 @@ def _build_html(order: WebflowOrderPayload) -> str:
   <p>{delivery}</p>
 
   <hr>
-  <p>Мы свяжемся с вами по телефону или email при необходимости.</p>
-  <p>С уважением,<br><strong>{config.SHOP_NAME}</strong></p>
+  <p>{CONTACT_LINE}</p>
+  <p>С уважением, <strong>{SHOP_DISPLAY_NAME}</strong>.</p>
   {contact_lines}
 </body>
 </html>"""
@@ -135,7 +162,14 @@ def _build_shop_html(order: WebflowOrderPayload) -> str:
 </html>"""
 
 
-def _send_email(subject: str, from_addr: str, to_addr: str, plain: str, html: str) -> None:
+def _send_email(
+    subject: str,
+    from_addr: str,
+    to_addr: str,
+    plain: str,
+    html: str,
+    bcc: list[str] | None = None,
+) -> None:
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = from_addr
@@ -150,11 +184,12 @@ def _send_email(subject: str, from_addr: str, to_addr: str, plain: str, html: st
     if config.SMTP_USE_TLS:
         server.starttls()
 
+    recipients = [to_addr] + (bcc or [])
     try:
         if config.SMTP_USERNAME:
             server.login(config.SMTP_USERNAME, config.SMTP_PASSWORD)
-        server.sendmail(from_addr, [to_addr], msg.as_string())
-        logger.info("Email sent to %s", to_addr)
+        server.sendmail(from_addr, recipients, msg.as_string())
+        logger.info("Email sent to %s (bcc: %s)", to_addr, bcc or [])
     finally:
         server.quit()
 
@@ -166,6 +201,7 @@ def send_order_confirmation(order: WebflowOrderPayload) -> None:
         to_addr=order.customer_email,
         plain=_build_plain(order),
         html=_build_html(order),
+        bcc=ORDER_BCC_RECIPIENTS,
     )
 
     if config.SHOP_EMAIL:
