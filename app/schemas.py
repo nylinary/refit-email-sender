@@ -8,6 +8,7 @@ class WebflowOrderPayload(BaseModel):
     customer_email: EmailStr
     customer_phone: Optional[str] = None
     delivery_method: Optional[str] = None
+    payment_method: Optional[str] = None
     customer_comment: Optional[str] = None
     order_total: Optional[str] = None
     order_total_card: Optional[str] = None

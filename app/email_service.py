@@ -18,6 +18,12 @@ DELIVERY_METHOD_LABELS = {
     "delivery_rf": "Доставка по России",
 }
 
+PAYMENT_METHOD_LABELS = {
+    "cash": "Наличные",
+    "installment": "Рассрочка/кредит",
+    "card_or_qr": "Оплата по карте/QR",
+}
+
 CONTACT_LINE = (
     "Мы свяжемся с вами по телефону в течении 15 минут "
     "для подтверждения заказа."
@@ -28,6 +34,12 @@ def _localize_delivery(method: str | None) -> str:
     if not method:
         return "—"
     return DELIVERY_METHOD_LABELS.get(method.strip().lower(), method)
+
+
+def _localize_payment(method: str | None) -> str:
+    if not method:
+        return "—"
+    return PAYMENT_METHOD_LABELS.get(method.strip().lower(), method)
 
 
 def _clean_items_text(items_text: str | None) -> str:
@@ -45,6 +57,7 @@ def _build_plain(order: WebflowOrderPayload) -> str:
     items = _clean_items_text(order.order_items_text)
     total = order.order_total or "—"
     delivery = _localize_delivery(order.delivery_method)
+    payment = _localize_payment(order.payment_method)
 
     lines = [
         f"Здравствуйте, {name}!",
@@ -56,6 +69,7 @@ def _build_plain(order: WebflowOrderPayload) -> str:
         "",
         f"Итого: {total} ₽",
         f"Способ доставки: {delivery}",
+        f"Способ оплаты: {payment}",
         "",
         CONTACT_LINE,
         "",
@@ -74,6 +88,7 @@ def _build_html(order: WebflowOrderPayload) -> str:
     items = _clean_items_text(order.order_items_text).replace("\n", "<br>")
     total = order.order_total or "—"
     delivery = _localize_delivery(order.delivery_method)
+    payment = _localize_payment(order.payment_method)
 
     contact_lines = f"<p>Тел.: {SHOP_DISPLAY_PHONE}</p>"
     if config.SHOP_EMAIL:
@@ -94,6 +109,9 @@ def _build_html(order: WebflowOrderPayload) -> str:
   <h3>Способ доставки</h3>
   <p>{delivery}</p>
 
+  <h3>Способ оплаты</h3>
+  <p>{payment}</p>
+
   <hr>
   <p>{CONTACT_LINE}</p>
   <p>С уважением, <strong>{SHOP_DISPLAY_NAME}</strong>.</p>
@@ -108,7 +126,8 @@ def _build_shop_plain(order: WebflowOrderPayload) -> str:
     phone = order.customer_phone or "—"
     items = order.order_items_text or "Состав заказа не передан"
     total = order.order_total or "—"
-    delivery = order.delivery_method or "—"
+    delivery = _localize_delivery(order.delivery_method)
+    payment = _localize_payment(order.payment_method)
     comment = order.customer_comment or "—"
     source = order.order_source_page or "—"
     created = order.order_created_at or "—"
@@ -126,6 +145,7 @@ def _build_shop_plain(order: WebflowOrderPayload) -> str:
         "",
         f"Итого: {total} ₽",
         f"Способ доставки: {delivery}",
+        f"Способ оплаты: {payment}",
         f"Страница заказа: {source}",
         f"Дата: {created}",
     ])
@@ -137,7 +157,8 @@ def _build_shop_html(order: WebflowOrderPayload) -> str:
     phone = order.customer_phone or "—"
     items = (order.order_items_text or "Состав заказа не передан").replace("\n", "<br>")
     total = order.order_total or "—"
-    delivery = order.delivery_method or "—"
+    delivery = _localize_delivery(order.delivery_method)
+    payment = _localize_payment(order.payment_method)
     comment = order.customer_comment or "—"
     source = order.order_source_page or "—"
     created = order.order_created_at or "—"
@@ -154,7 +175,7 @@ def _build_shop_html(order: WebflowOrderPayload) -> str:
   <p>{items}</p>
 
   <h3>Итого: {total} ₽</h3>
-  <p>Способ доставки: {delivery}</p>
+  <p>Способ доставки: {delivery}<br>Способ оплаты: {payment}</p>
 
   <hr>
   <p>Страница заказа: {source}<br>Дата: {created}</p>
