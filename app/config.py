@@ -22,3 +22,6 @@ SHOP_PHONE: str = _get("SHOP_PHONE")
 SHOP_EMAIL: str = _get("SHOP_EMAIL")
 
 WEBFLOW_WEBHOOK_SECRET: str = _get("WEBFLOW_WEBHOOK_SECRET")
+
+# Optional shared secret guarding /debug/smtp. If empty, the endpoint is disabled.
+DEBUG_TOKEN: str = _get("DEBUG_TOKEN")

@@ -1,5 +1,7 @@
 import logging
 import smtplib
+import socket
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -213,6 +215,99 @@ def _send_email(
         logger.info("Email sent to %s (bcc: %s)", to_addr, bcc or [])
     finally:
         server.quit()
+
+
+def diagnose_smtp() -> dict:
+    """Walk the same SMTP handshake as _send_email and report where it fails.
+
+    Never sends mail; issues NOOP after auth. Runs from inside the deployed
+    environment so it reveals IP-block / port / TLS / credential problems that
+    a healthy connection from elsewhere would hide. Password is never returned.
+    """
+    steps: list[dict] = []
+    result = {
+        "host": config.SMTP_HOST,
+        "port": config.SMTP_PORT,
+        "use_tls": config.SMTP_USE_TLS,
+        "has_username": bool(config.SMTP_USERNAME),
+        "mail_from": config.MAIL_FROM,
+        "ok": False,
+        "steps": steps,
+    }
+    server: smtplib.SMTP | None = None
+
+    def record(name: str, fn):
+        start = time.monotonic()
+        try:
+            value = fn()
+            steps.append({
+                "step": name,
+                "ok": True,
+                "ms": round((time.monotonic() - start) * 1000),
+                "detail": value,
+            })
+            return True
+        except Exception as exc:
+            steps.append({
+                "step": name,
+                "ok": False,
+                "ms": round((time.monotonic() - start) * 1000),
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            })
+            return False
+
+    def do_connect():
+        nonlocal server
+        server = smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=15)
+        return f"greeting sock_alive={server.sock is not None}"
+
+    def do_ehlo():
+        code, msg = server.ehlo()
+        return f"{code} {msg.decode(errors='replace')[:200]}"
+
+    def do_starttls():
+        code, msg = server.starttls()
+        return f"{code} {msg.decode(errors='replace')[:120]}"
+
+    def do_ehlo_tls():
+        code, _ = server.ehlo()
+        return f"{code} extensions={list(server.esmtp_features.keys())}"
+
+    def do_login():
+        server.login(config.SMTP_USERNAME, config.SMTP_PASSWORD)
+        return "authenticated"
+
+    def do_noop():
+        code, _ = server.noop()
+        return f"{code}"
+
+    try:
+        if not record("connect", do_connect):
+            return result
+        if not record("ehlo", do_ehlo):
+            return result
+        if config.SMTP_USE_TLS:
+            if not record("starttls", do_starttls):
+                return result
+            if not record("ehlo_after_tls", do_ehlo_tls):
+                return result
+        if config.SMTP_USERNAME:
+            if not record("login", do_login):
+                return result
+        record("noop", do_noop)
+        result["ok"] = all(s["ok"] for s in steps)
+    except (socket.timeout, OSError) as exc:
+        steps.append({"step": "socket", "ok": False,
+                      "error_type": type(exc).__name__, "error": str(exc)})
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
+
+    return result
 
 
 def send_order_confirmation(order: WebflowOrderPayload) -> None:

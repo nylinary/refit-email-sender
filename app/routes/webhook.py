@@ -6,8 +6,9 @@ import time
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 
+from app import config
 from app.config import WEBFLOW_WEBHOOK_SECRET
-from app.email_service import send_order_confirmation
+from app.email_service import diagnose_smtp, send_order_confirmation
 from app.schemas import WebflowOrderPayload
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,20 @@ def _verify_webflow_signature(secret: str, timestamp: str, raw_body: bytes, sign
 @router.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@router.get("/debug/smtp")
+def debug_smtp(token: str = ""):
+    """Run the SMTP handshake from inside the deployment and report where it fails.
+
+    Guarded by DEBUG_TOKEN. Disabled (404) unless DEBUG_TOKEN is set; otherwise
+    requires ?token=<DEBUG_TOKEN>. Never sends mail and never returns the password.
+    """
+    if not config.DEBUG_TOKEN:
+        raise HTTPException(status_code=404, detail="not found")
+    if not hmac.compare_digest(token, config.DEBUG_TOKEN):
+        raise HTTPException(status_code=403, detail="forbidden")
+    return diagnose_smtp()
 
 
 @router.post("/webhooks/webflow-order")
